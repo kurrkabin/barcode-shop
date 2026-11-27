@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Shop Barcodes</title>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+  :root { --ink:#1d2a33; --muted:#6b7a86; --line:#e3e8ec; --bg:#f6f8f9; --accent:#0f5c73; --ok:#1f7a4d; --bad:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+  header { background:#fff; border-bottom:1px solid var(--line); padding:18px 24px; }
+  header h1 { margin:0; font-size:22px; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
+  main { max-width:1100px; margin:0 auto; padding:24px; display:grid; gap:20px; }
+  .panel { background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px; }
+  .panel h2 { margin:0 0 12px; font-size:17px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  input[type=text] { flex:1; min-width:220px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:15px; }
+  button, .btn { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:10px 14px; font-size:14px; cursor:pointer; }
+  button.ghost { background:#fff; color:var(--accent); border:1px solid var(--accent); }
+  button.danger { background:#fff; color:var(--bad); border:1px solid var(--bad); }
+  button:disabled { opacity:.5; cursor:default; }
+  .msg { font-size:14px; margin-top:8px; min-height:18px; }
+  .msg.ok { color:var(--ok); } .msg.bad { color:var(--bad); }
+  #drop { border:2px dashed var(--line); border-radius:12px; padding:26px; text-align:center; color:var(--muted); cursor:pointer; }
+  #drop.over { border-color:var(--accent); background:#eef6f8; }
+  #result { margin-top:14px; font-size:20px; font-weight:600; word-break:break-word; }
+  #preview { max-width:100%; margin-top:10px; display:none; border:1px solid var(--line); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:12px; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .card .name { font-weight:600; font-size:14px; }
+  .card .num { color:var(--muted); font-size:12px; }
+  .card canvas { width:100%; height:auto; image-rendering:pixelated; }
+  .tag { font-size:11px; background:#eef6f8; color:var(--accent); border-radius:6px; padding:2px 6px; margin-left:6px; }
+  .search { margin-bottom:12px; }
+  @media (min-width:900px) { .top { display:grid; grid-template-columns:1fr 1fr; gap:20px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Family Shop Barcodes</h1>
+  <p>Make a Code 128 barcode for any product, download it as PNG, and upload it to read the product back.</p>
+</header>
+<main>
+  <div class="top">
+    <section class="panel">
+      <h2>1. Add a new item</h2>
+      <div class="row">
+        <input id="newName" type="text" maxlength="60" placeholder="e.g. Sparkling Water 1 L">
+        <button id="addBtn">Add item</button>
+      </div>
+      <div id="addMsg" class="msg"></div>
+      <p style="color:var(--muted);font-size:13px;margin:10px 0 0">English letters, numbers and symbols only (max 60). New items are saved in this browser.</p>
+    </section>
+    <section class="panel">
+      <h2>2. Read a barcode</h2>
+      <div id="drop">Drop a barcode PNG here, or click to choose a file</div>
+      <input id="file" type="file" accept="image/*" hidden>
+      <img id="preview" alt="Uploaded barcode">
+      <div id="result"></div>
+      <div id="readMsg" class="msg"></div>
+    </section>
+  </div>
+  <section class="panel">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <h2 style="margin:0">3. All items (<span id="count">0</span>)</h2>
+      <button id="zipBtn">Download all as ZIP</button>
+    </div>
+    <input id="search" class="search" type="text" placeholder="Search items..." style="width:100%">
+    <div id="grid" class="grid"></div>
+  </section>
+</main>
+<script>
+const BASE = [
+  "Marlboro Red 20 Cigarettes","Marlboro Gold 20 Cigarettes","Camel Blue 20 Cigarettes",
+  "Mineral Water 0.5 L Bottle","Mineral Water 1.5 L Bottle","12-pack 0.5 litres Water Bottle",
+  "Fresh Milk 3% 1 L","White Bread 500 g","Wholegrain Bread 500 g","Eggs 10 pack",
+  "White Cheese 400 g","Yellow Cheese 400 g","Yogurt 2% 400 g","Butter 125 g",
+  "Sunflower Oil 1 L","White Sugar 1 kg","Salt 500 g","Wheat Flour 1 kg","Rice 1 kg",
+  "Spaghetti 500 g","Ground Coffee 250 g","Black Tea 20 bags","Coca-Cola 2 L",
+  "Orange Juice 1 L","Beer Lager 0.5 L Can","Beer 6-pack 0.5 L Cans","Red Wine 0.75 L",
+  "Milk Chocolate 100 g","Wafer Bar 50 g","Potato Chips 150 g","Salted Peanuts 200 g",
+  "Chewing Gum Mint","Bananas 1 kg","Apples 1 kg","Tomatoes 1 kg","Potatoes 2 kg",
+  "Onions 1 kg","Chicken Breast 1 kg","Pork Sausage 300 g","Ham Slices 200 g",
+  "Canned Tuna 160 g","Toilet Paper 8 rolls","Paper Towels 2 rolls","Dish Soap 500 ml",
+  "Laundry Detergent 2 kg","Toothpaste 75 ml","Shampoo 400 ml","Hand Soap 250 ml",
+  "AA Batteries 4 pack","Lighter"
+];
+const KEY = "barcode-shop-added";
+const $ = id => document.getElementById(id);
+let added = JSON.parse(localStorage.getItem(KEY) || "[]");
+const all = () => [...BASE, ...added];
+
+// Draw a Code 128 barcode for text onto a canvas (white background, quiet zone, label below).
+function makeBarcode(text) {
+  const c = document.createElement("canvas");
+  JsBarcode(c, text, { format:"CODE128", width:2, height:100, margin:20, displayValue:true, fontSize:16, background:"#ffffff", lineColor:"#000000" });
+  return c;
+}
+const slug = t => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const fileName = (t, i) => String(i + 1).padStart(2, "0") + "-" + slug(t) + ".png";
+
+function download(canvas, name) {
+  canvas.toBlob(b => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, "image/png");
+}
+
+function render() {
+  const q = $("search").value.trim().toLowerCase();
+  const items = all();
+  $("count").textContent = items.length;
+  const grid = $("grid"); grid.innerHTML = "";
+  items.forEach((t, i) => {
+    if (q && !t.toLowerCase().includes(q)) return;
+    const card = document.createElement("div"); card.className = "card";
+    const isNew = i >= BASE.length;
+    card.innerHTML = `<div><span class="num">#${i + 1}</span>${isNew ? '<span class="tag">added</span>' : ''}</div><div class="name"></div>`;
+    card.querySelector(".name").textContent = t;
+    const canvas = makeBarcode(t); card.appendChild(canvas);
+    const row = document.createElement("div"); row.className = "row";
+    const dl = document.createElement("button"); dl.textContent = "Download PNG";
+    dl.onclick = () => download(canvas, fileName(t, i));
+    row.appendChild(dl);
+    if (isNew) {
+      const del = document.createElement("button"); del.className = "danger"; del.textContent = "Remove";
+      del.onclick = () => { added = added.filter(x => x !== t); save(); render(); };
+      row.appendChild(del);
+    }
+    card.appendChild(row); grid.appendChild(card);
+  });
+}
+const save = () => localStorage.setItem(KEY, JSON.stringify(added));
+
+$("addBtn").onclick = () => {
+  const t = $("newName").value.trim().replace(/\s+/g, " ");
+  const msg = $("addMsg");
+  if (!t) { msg.className = "msg bad"; msg.textContent = "Type a product name first."; return; }
+  if (!/^[\x20-\x7E]+$/.test(t)) { msg.className = "msg bad"; msg.textContent = "Use English letters, numbers and symbols only."; return; }
+  if (all().some(x => x.toLowerCase() === t.toLowerCase())) { msg.className = "msg bad"; msg.textContent = "This item is already on the list."; return; }
+  added.push(t); save(); $("newName").value = ""; $("search").value = ""; render();
+  msg.className = "msg ok"; msg.textContent = `Added "${t}" as item #${all().length}.`;
+};
+$("newName").addEventListener("keydown", e => { if (e.key === "Enter") $("addBtn").click(); });
+$("search").addEventListener("input", render);
+
+$("zipBtn").onclick = async () => {
+  const btn = $("zipBtn"); btn.disabled = true; btn.textContent = "Building ZIP...";
+  const zip = new JSZip();
+  const items = all();
+  for (let i = 0; i < items.length; i++) {
+    const blob = await new Promise(r => makeBarcode(items[i]).toBlob(r, "image/png"));
+    zip.file(fileName(items[i], i), blob);
+  }
+  zip.file("products.txt", items.map((t, i) => `${i + 1}. ${t}`).join("\n"));
+  const out = await zip.generateAsync({ type:"blob" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(out); a.download = "family-shop-barcodes.zip"; a.click();
+  btn.disabled = false; btn.textContent = "Download all as ZIP";
+};
+
+// Decode: draw image on a canvas with extra white border, then read with ZXing (Code 128 only).
+const reader = new ZXing.MultiFormatReader();
+const hints = new Map();
+hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.CODE_128]);
+hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+reader.setHints(hints);
+function decodeImage(img) {
+  const pad = 40, c = document.createElement("canvas");
+  c.width = img.naturalWidth + pad * 2; c.height = img.naturalHeight + pad * 2;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(img, pad, pad);
+  const src = new ZXing.HTMLCanvasElementLuminanceSource(c);
+  return reader.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(src))).getText();
+}
+window.decodeImage = decodeImage; window.makeBarcode = makeBarcode; window.allItems = all;
+
+function readFile(file) {
+  if (!file) return;
+  const img = $("preview"), msg = $("readMsg"), res = $("result");
+  res.textContent = ""; msg.textContent = "";
+  img.onload = () => {
+    img.style.display = "block";
+    try {
+      const text = decodeImage(img);
+      res.textContent = text;
+      const idx = all().findIndex(x => x === text);
+      msg.className = "msg ok";
+      msg.textContent = idx >= 0 ? `Match: item #${idx + 1} on your list.` : "Read OK, but this text is not on your item list.";
+    } catch (e) {
+      msg.className = "msg bad"; msg.textContent = "No barcode found in this image. Try a clearer PNG from this app.";
+    }
+  };
+  img.src = URL.createObjectURL(file);
+}
+$("drop").onclick = () => $("file").click();
+$("file").onchange = e => readFile(e.target.files[0]);
+["dragover","dragenter"].forEach(ev => $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.add("over"); }));
+["dragleave","drop"].forEach(ev => $("drop").addEventListener(ev, e => { e.preventDefault(); $("drop").classList.remove("over"); }));
+$("drop").addEventListener("drop", e => readFile(e.dataTransfer.files[0]));
+
+render();
+</script>
+</body>
+</html>
